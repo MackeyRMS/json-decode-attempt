@@ -780,8 +780,6 @@ tests =
                         (Dict.fromList [ ( "0", "stuff" ), ( "blah", "a" ), ( "stuffz", "a" ) ])
                         |> Expect.equal (decode (json (dict (stringOr "a"))) subject)
             ]
-
-        -- , describe ""
         , describe "at"
             [ test "decodes field of record properly" <|
                 \_ ->
@@ -1097,6 +1095,28 @@ tests =
                                 ]
                                 False
                             )
+            , test "BUG: defaulting to wrong value" <|
+                \_ ->
+                    let
+                        subject =
+                            Encode.object
+                                [ ( "bar", Encode.int 77 )
+                                ]
+
+                        decoder =
+                            succeed identity
+                                |> required "foo" [] sub
+
+                        sub =
+                            succeed identity
+                                |> required "bar" [] (intOr 3)
+
+                        run f =
+                            decode f subject
+                    in
+                    decoder
+                        |> run
+                        |> Expect.equal (Validated [ Decode.Failure "Expecting an OBJECT with a field named `foo`" subject ] 3)
             ]
         , describe "doubleEncoded"
             [ test "decodes a json object embedded in a json string" <|
