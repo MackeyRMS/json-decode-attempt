@@ -395,9 +395,19 @@ required :
     -> Decoder status (f -> b)
     -> Decoder status b
 required fst fields decoder =
+    let
+        at_ : Decoder WithDefaults f -> Decoder WithDefaults f
+        at_ dec =
+            List.foldr field_ dec (fst :: fields)
+
+        field_ : String -> Decoder WithDefaults a -> Decoder WithDefaults a
+        field_ name (D d) =
+            Decode.field name d
+                |> withDefault (decode (D d) Encode.null)
+                |> flatten
+    in
     andMap
-        (at fst
-            fields
+        (at_
             (decoder
                 |> toDecoder
                 |> Decode.map
@@ -462,7 +472,7 @@ at fst fields decoder =
 
 
 {-| -}
-map : (a -> b) -> Decoder WithDefaults a -> Decoder WithDefaults b
+map : (a -> b) -> Decoder any a -> Decoder any b
 map fn (D decoder) =
     Decode.map (\d -> Validated d.errors (fn d.value)) decoder
         |> D
@@ -1116,7 +1126,14 @@ tests =
                     in
                     decoder
                         |> run
-                        |> Expect.equal (Validated [ Decode.Failure "Expecting an OBJECT with a field named `foo`" subject ] 3)
+                        |> Expect.equal
+                            (Validated
+                                [ Decode.Field "foo" (Decode.Field "bar" (Decode.Failure "Expecting an INT" Encode.null))
+                                , Decode.Field "foo" (Decode.Failure "Expecting an OBJECT with a field named `bar`" Encode.null)
+                                , Decode.Failure "Expecting an OBJECT with a field named `foo`" subject
+                                ]
+                                3
+                            )
             ]
         , describe "doubleEncoded"
             [ test "decodes a json object embedded in a json string" <|
