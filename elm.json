@@ -3,7 +3,7 @@
     "name": "MackeyRMS/json-decode-attempt",
     "summary": "Decode JSON with fallbacks AND errors",
     "license": "MIT",
-    "version": "2.0.0",
+    "version": "3.0.0",
     "exposed-modules": [
         "Json.Decode.Attempt"
     ],
