@@ -395,19 +395,8 @@ required :
     -> Decoder status (f -> b)
     -> Decoder status b
 required fst fields decoder =
-    let
-        at_ : Decoder WithDefaults f -> Decoder WithDefaults f
-        at_ dec =
-            List.foldr field_ dec (fst :: fields)
-
-        field_ : String -> Decoder WithDefaults a -> Decoder WithDefaults a
-        field_ name (D d) =
-            Decode.field name d
-                |> withDefault (decode (D d) Encode.null)
-                |> flatten
-    in
     andMap
-        (at_
+        (at fst fields <|
             (decoder
                 |> toDecoder
                 |> Decode.map
@@ -462,7 +451,7 @@ oneOf dec def =
     Decode.oneOf dec |> withDefault def
 
 
-at : String -> List String -> Decoder status a -> Decoder status a
+at : String -> List String -> Decoder WithDefaults a -> Decoder WithDefaults a
 at fst fields decoder =
     List.foldr field decoder (fst :: fields)
 
@@ -576,17 +565,11 @@ doubleEncoded args (D dec) =
 -- Internal Helpers
 
 
-field : String -> Decoder status a -> Decoder status a
-field name (D decoder) =
-    decoder
-        |> Decode.andThen
-            (\dec ->
-                Decode.field name decoder
-                    |> withDefault (Validated [] dec.value)
-                    |> flatten
-                    |> toDecoder
-            )
-        |> D
+field : String -> Decoder WithDefaults a -> Decoder WithDefaults a
+field name (D d) =
+    Decode.field name d
+        |> withDefault (Validated [] (decode (D d) Encode.null).value)
+        |> flatten
 
 
 flatten : Decoder WithDefaults (Validated a) -> Decoder WithDefaults a
@@ -1105,7 +1088,30 @@ tests =
                                 ]
                                 False
                             )
-            , test "BUG: defaulting to wrong value" <|
+            , test "BUG: optional defaulting to wrong value" <|
+                \_ ->
+                    let
+                        subject =
+                            Encode.object
+                                [ ( "bar", Encode.int 77 )
+                                ]
+
+                        decoder =
+                            succeed identity
+                                |> optional "foo" [] sub
+
+                        sub =
+                            succeed identity
+                                |> optional "bar" [] (intOr 3)
+
+                        run f =
+                            decode f subject
+                    in
+                    decoder
+                        |> run
+                        |> Expect.equal
+                            (Validated [] 3)
+            , test "BUG: required defaulting to wrong value" <|
                 \_ ->
                     let
                         subject =
@@ -1128,10 +1134,7 @@ tests =
                         |> run
                         |> Expect.equal
                             (Validated
-                                [ Decode.Field "foo" (Decode.Field "bar" (Decode.Failure "Expecting an INT" Encode.null))
-                                , Decode.Field "foo" (Decode.Failure "Expecting an OBJECT with a field named `bar`" Encode.null)
-                                , Decode.Failure "Expecting an OBJECT with a field named `foo`" subject
-                                ]
+                                [ Decode.Failure "Expecting an OBJECT with a field named `foo`" subject ]
                                 3
                             )
             ]
@@ -1174,7 +1177,8 @@ tests =
                         |> run
                         |> Expect.equal
                             (Validated
-                                [ Decode.Failure "Expecting an OBJECT with a field named `primary_color`" subject ]
+                                [ Decode.Failure "Expecting an OBJECT with a field named `primary_color`" subject
+                                ]
                                 "BUST"
                             )
             ]
